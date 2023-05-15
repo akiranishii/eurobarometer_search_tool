@@ -1,13 +1,19 @@
 import pandas as pd
 import streamlit as st 
 
-df = pd.read_csv('merged_df.csv')
+st.set_page_config(layout='wide')
+
+df = pd.read_csv('merged_df_links.csv')
+df['extracted_text'] = df['extracted_text'].astype(str)
+first_column_name = df.columns[0]
+df = df.drop(columns=[first_column_name])
 
 
-st.markdown(""" This is a Streamlit App """)
+
+st.markdown(""" Please send any feedback or feature requests to anishii dot umich dot edu """)
 
 # Streamlit app code
-st.title("Explore the Eurobarometer Data")
+st.title("Eurobarometer Data Exploration Tool")
 
 # User input for keywords
 keywords_input = st.text_input("Enter keywords separated by commas:", "")
@@ -23,25 +29,20 @@ for countries_str in df['Countries']:
     all_countries.update(countries)
 
 # User input for countries
-selected_countries = st.multiselect('Select countries:', sorted(list(all_countries)))
+selected_countries = st.multiselect('Select required countries:', sorted(list(all_countries)))
 
-def wrap_keywords_in_bold(text, keywords):
-    for keyword in keywords:
-        text = text.replace(keyword, f'<b>{keyword}</b>')
-    return text
+def wrap_keywords_in_bold(text_series, keywords):
+    return text_series.apply(lambda text: ' '.join([f'<b>{word}</b>' if word.lower() in keywords else word for word in text.split()]))
 
-# Function to filter the dataframe
 def filter_dataframe(df, privacy_keywords):
     matching_rows = []
-    matching_phrases = []
 
     for index, row in df.iterrows():
-        if any(keyword in row['sentence'].lower() for keyword in privacy_keywords):
-            matching_rows.append(row)
-            words = row['sentence'].lower().split()
-            index_keyword = [i for i, word in enumerate(words) if word in privacy_keywords]
-            if index_keyword:
-                keyword_index = index_keyword[0]
+        words = row['extracted_text'].lower().split()
+        indices_keyword = [i for i, word in enumerate(words) if word in privacy_keywords]
+
+        if indices_keyword:  # Check if there are any keyword occurrences
+            for keyword_index in indices_keyword:
                 start = max(0, keyword_index - 2)
                 end = min(len(words), keyword_index + 3)
                 if keyword_index - start < 2:
@@ -49,33 +50,30 @@ def filter_dataframe(df, privacy_keywords):
                 if end - keyword_index < 2:
                     end = min(len(words), keyword_index + 2)
                 phrase = ' '.join(words[start:end])
-                # phrase = wrap_keywords_in_bold(phrase, privacy_keywords) # Wrap keywords in bold
-            else:
-                phrase = ''
-            matching_phrases.append(phrase)
+                
+                new_row = row.copy()
+                new_row['matching_phrase'] = phrase
+                matching_rows.append(new_row)
 
     new_df = pd.DataFrame(matching_rows)
-    new_df['matching_phrase'] = matching_phrases
-    # new_df['sentence'] = new_df['sentence'].apply(lambda x: wrap_keywords_in_bold(x, privacy_keywords)) # Wrap keywords in bold for 'sentence' column
 
     return new_df
 
+
 # Filter dataframe based on user's keywords
-if privacy_keywords:
+if not privacy_keywords or privacy_keywords == [""]:
+    filtered_df = df
+else:
     filtered_df = filter_dataframe(df, privacy_keywords)
-    filtered_df = filtered_df[(filtered_df['Year of survey'] >= min_year) & (filtered_df['Year of survey'] <= max_year)]
-    
-    if privacy_keywords:
-        filtered_df = filter_dataframe(filtered_df, privacy_keywords)
 
-    if selected_countries:
-        filtered_df = filtered_df[filtered_df['Countries'].apply(lambda x: any(country in x.split() for country in selected_countries))]
-    
-    st.write(filtered_df)
+# Filter by year range
+filtered_df = filtered_df[(filtered_df['Year of survey'] >= min_year) & (filtered_df['Year of survey'] <= max_year)]
 
-    # Convert the filtered DataFrame to an HTML table with bold keywords
-    # html_table = filtered_df.to_html(escape=False, index=False)
-    # st.markdown(html_table, unsafe_allow_html=True)
+# Filter by selected countries
+if selected_countries:
+    filtered_df = filtered_df[filtered_df['Countries'].apply(lambda x: any(country in x.split() for country in selected_countries))]
+
+st.write(filtered_df)
 
 
 
